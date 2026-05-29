@@ -74,12 +74,12 @@ class KDConfig:
 
     # Training hyperparameters
     num_epochs: int = 1
-    batch_size: int = 2
-    gradient_accumulation_steps: int = 4
+    batch_size: int = 1
+    gradient_accumulation_steps: int = 8
     learning_rate: float = 2e-4
     vision_lr_multiplier: float = 0.1  # Lower LR for vision encoder (stabilize training)
     warmup_ratio: float = 0.1
-    max_length: int = 2048
+    max_length: int = 512
     bf16: bool = True
 
     # Logging & saving
