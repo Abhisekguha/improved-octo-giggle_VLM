@@ -1,0 +1,49 @@
+# Benchmarking Configuration — Finetuned Models
+# ================================================
+
+# Dataset settings (same as base benchmark for fair comparison)
+dataset:
+  name: "nyu-visionx/CV-Bench"
+  split: "test"
+  num_samples: 1438
+  type_filter: "2d"
+
+# Finetuned models to benchmark
+models:
+  - name: "InternVL3.5-1B-LoRA-Finetuned"
+    path: "OpenGVLab/InternVL3_5-1B-Instruct"
+    adapter_path: "./finetuning_scripts/internvl3_cvbench_lora/lora_adapters"
+    type: "internvl_lora"
+    dtype: "bfloat16"
+    load_in_4bit: false
+    max_new_tokens: 128
+
+  - name: "SmolVLM-Instruct-LoRA-Finetuned"
+    path: "HuggingFaceTB/SmolVLM-Instruct"
+    adapter_path: "./finetuning_scripts/smolVLM-instruct_checkpoint_cvbench"
+    type: "smolvlm_lora"
+    dtype: "bfloat16"
+    load_in_4bit: false
+    max_new_tokens: 128
+
+  - name: "Qwen3-VL-8B-LoRA-Finetuned_subCV"
+    path: "unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit"
+    adapter_path: "./finetuning_scripts/qwen_finetune/subCV_qwen3-8B_lora"
+    type: "qwen_lora"
+    load_in_4bit: true
+    max_new_tokens: 128
+
+# Evaluation metrics (aligned with base benchmark)
+metrics:
+  - "mcq_accuracy"
+  - "bleu"
+  - "rouge"
+  - "meteor"
+  - "bertscore"
+
+# Output settings
+output:
+  results_dir: "./results_finetuned"
+  plots_dir: "./results_finetuned/plots"
+  results_file: "benchmark_results.csv"
+  summary_file: "benchmark_summary.txt"

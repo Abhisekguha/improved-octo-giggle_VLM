@@ -1,0 +1,3 @@
+Model,Task,Accuracy,Samples
+InternVL3.5-1B,Count,0.5177664974619289,788
+InternVL3.5-1B,Relation,0.5661538461538461,650

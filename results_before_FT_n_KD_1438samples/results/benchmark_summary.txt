@@ -1,0 +1,16 @@
+VLM Spatial Understanding Benchmark Results
+============================================================
+
+Overall Metrics:
+                  mcq_accuracy      bleu    rouge1  rouge2    rougeL    meteor  bertscore_precision  bertscore_recall  bertscore_f1  avg_inference_time  total_inference_time  model_load_time
+Model                                                                                                                                                                                         
+InternVL3.5-1B        0.539638  0.000000  0.567455     0.0  0.567455  0.000000             0.595619          0.575694      0.583668            0.605139            870.189792        40.303663
+Qwen3-VL-8B-4bit      0.792072  0.131707  0.595735     0.0  0.595735  0.267733             0.730126          0.802455      0.762257            1.577412           2268.317984       198.841702
+SpatialBot-3B         0.630737  0.000000  0.634910     0.0  0.634910  0.000000             0.615533          0.582699      0.596908            2.750892           3955.782526       437.767979
+
+Per-Task Accuracy:
+Task                 Count  Relation
+Model                               
+InternVL3.5-1B    0.517766  0.566154
+Qwen3-VL-8B-4bit  0.684010  0.923077
+SpatialBot-3B     0.572335  0.701538

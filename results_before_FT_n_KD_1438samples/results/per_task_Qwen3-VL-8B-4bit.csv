@@ -1,0 +1,3 @@
+Model,Task,Accuracy,Samples
+Qwen3-VL-8B-4bit,Count,0.684010152284264,788
+Qwen3-VL-8B-4bit,Relation,0.9230769230769231,650

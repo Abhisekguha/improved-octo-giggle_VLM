@@ -1,0 +1,1 @@
+{"mcq_accuracy":0.6307371349,"bleu":0.0,"rouge1":0.6349095967,"rouge2":0.0,"rougeL":0.6349095967,"meteor":0.0,"bertscore_precision":0.615532577,"bertscore_recall":0.5826990604,"bertscore_f1":0.5969084501,"avg_inference_time":2.7508918818,"total_inference_time":3955.7825260162,"model_load_time":437.7679786682}

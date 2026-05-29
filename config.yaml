@@ -1,0 +1,54 @@
+# Benchmarking Configuration
+# ===========================
+
+# Dataset settings
+dataset:
+  name: "nyu-visionx/CV-Bench"
+  split: "test"
+  num_samples: 1438  # Number of samples to evaluate
+  type_filter: "2d"  # "2d", "3d", or "all"
+
+# Models to benchmark (evaluated sequentially, memory cleared between each)
+models:
+  - name: "InternVL3.5-1B"
+    path: "OpenGVLab/InternVL3_5-1B-Instruct"
+    type: "internvl"
+    dtype: "bfloat16"
+    load_in_4bit: false
+    max_new_tokens: 128
+
+  - name: "SmolVLM-500M-Instruct"
+    path: "HuggingFaceTB/SmolVLM-500M-Instruct"
+    type: "smolvlm"
+    dtype: "bfloat16"
+    load_in_4bit: false
+    max_new_tokens: 128
+
+  - name: "SpatialBot-3B"
+    path: "RussRobin/SpatialBot-3B"
+    type: "spatialbot"
+    dtype: "float16"
+    load_in_4bit: false
+    max_new_tokens: 128
+
+  - name: "Qwen3-VL-8B-4bit"
+    path: "unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit"
+    type: "qwen"
+    dtype: "auto"
+    load_in_4bit: true
+    max_new_tokens: 128
+
+# Evaluation metrics
+metrics:
+  - "mcq_accuracy"
+  - "bleu"
+  - "rouge"
+  - "meteor"
+  - "bertscore"
+
+# Output settings
+output:
+  results_dir: "./results"
+  plots_dir: "./results/plots"
+  results_file: "benchmark_results.csv"
+  summary_file: "benchmark_summary.txt"

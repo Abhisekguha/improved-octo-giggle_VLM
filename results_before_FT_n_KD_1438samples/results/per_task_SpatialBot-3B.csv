@@ -1,0 +1,3 @@
+Model,Task,Accuracy,Samples
+SpatialBot-3B,Count,0.5723350253807107,788
+SpatialBot-3B,Relation,0.7015384615384616,650
