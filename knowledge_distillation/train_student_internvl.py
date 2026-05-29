@@ -13,6 +13,7 @@ Enhanced with:
 
 import argparse
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use single GPU to avoid DataParallel issues
 import numpy as np
 import torch
 import torch.nn as nn
@@ -272,6 +273,11 @@ class KDTrainer(Trainer):
             filtered_inputs["image_flags"] = filtered_inputs["image_flags"].to(
                 filtered_inputs["pixel_values"].device
             )
+        
+        # Cast pixel_values to model dtype (collator outputs float32, model expects bf16/fp16)
+        if "pixel_values" in filtered_inputs:
+            model_dtype = next(model.parameters()).dtype
+            filtered_inputs["pixel_values"] = filtered_inputs["pixel_values"].to(dtype=model_dtype)
         
         outputs = model(**filtered_inputs)
         ce_loss = outputs.loss
