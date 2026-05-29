@@ -202,8 +202,15 @@ class InternVLKDCollator:
             "labels": torch.stack(labels_list),
             "pixel_values": torch.stack(pixel_values_list),
         }
-        if soft_labels_list:
-            result["soft_labels"] = torch.stack(soft_labels_list)
+        if soft_labels_list and self.kd_mode == "soft_label":
+            # Pad soft labels to same size (some questions have 4 options, some 5)
+            max_opts = max(s.shape[0] for s in soft_labels_list)
+            padded = []
+            for s in soft_labels_list:
+                if s.shape[0] < max_opts:
+                    s = F.pad(s, (0, max_opts - s.shape[0]), value=0.0)
+                padded.append(s)
+            result["soft_labels"] = torch.stack(padded)
         if teacher_features_list and any(f is not None for f in teacher_features_list):
             result["teacher_features"] = teacher_features_list
 
