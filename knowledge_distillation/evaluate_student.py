@@ -9,6 +9,9 @@ import argparse
 import json
 import os
 import torch
+import torchvision.transforms as T
+from PIL import Image
+from torchvision.transforms.functional import InterpolationMode
 from tqdm import tqdm
 
 # Support both direct execution and module execution
@@ -29,6 +32,87 @@ except ModuleNotFoundError:
         format_question,
         load_cvbench,
     )
+
+
+# ------------------------------------------------------------------
+# Image preprocessing (from InternVL)
+# ------------------------------------------------------------------
+
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+
+
+def build_transform(input_size):
+    return T.Compose([
+        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+        T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+        T.ToTensor(),
+        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+    ])
+
+
+def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=False):
+    orig_width, orig_height = image.size
+    aspect_ratio = orig_width / orig_height
+
+    target_ratios = set(
+        (i, j) for n in range(min_num, max_num + 1)
+        for i in range(1, n + 1) for j in range(1, n + 1)
+        if i * j <= max_num and i * j >= min_num
+    )
+    target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
+
+    # Find closest aspect ratio
+    best_ratio_diff = float('inf')
+    best_ratio = (1, 1)
+    area = orig_width * orig_height
+    for ratio in target_ratios:
+        target_aspect_ratio = ratio[0] / ratio[1]
+        ratio_diff = abs(aspect_ratio - target_aspect_ratio)
+        if ratio_diff < best_ratio_diff:
+            best_ratio_diff = ratio_diff
+            best_ratio = ratio
+        elif ratio_diff == best_ratio_diff:
+            if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
+                best_ratio = ratio
+
+    target_width = image_size * best_ratio[0]
+    target_height = image_size * best_ratio[1]
+    blocks = best_ratio[0] * best_ratio[1]
+
+    resized_img = image.resize((target_width, target_height))
+    processed_images = []
+    for i in range(blocks):
+        box = (
+            (i % (target_width // image_size)) * image_size,
+            (i // (target_width // image_size)) * image_size,
+            ((i % (target_width // image_size)) + 1) * image_size,
+            ((i // (target_width // image_size)) + 1) * image_size
+        )
+        split_img = resized_img.crop(box)
+        processed_images.append(split_img)
+    
+    if use_thumbnail and len(processed_images) != 1:
+        thumbnail_img = image.resize((image_size, image_size))
+        processed_images.append(thumbnail_img)
+    
+    return processed_images
+
+
+def load_image(image_input, input_size=448, max_num=12):
+    """Load and preprocess image for InternVL."""
+    if isinstance(image_input, str):
+        image = Image.open(image_input).convert('RGB')
+    elif isinstance(image_input, Image.Image):
+        image = image_input.convert('RGB')
+    else:
+        raise ValueError("image_input must be a file path or PIL Image")
+
+    transform = build_transform(input_size=input_size)
+    images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
+    pixel_values = [transform(img) for img in images]
+    pixel_values = torch.stack(pixel_values)
+    return pixel_values
 
 
 # ------------------------------------------------------------------
@@ -80,13 +164,14 @@ def evaluate(model, tokenizer, dataset):
         # Generate prediction
         try:
             if hasattr(model, "chat"):
-                response = model.chat(
-                    tokenizer=tokenizer,
-                    pixel_values=None,
-                    question=query,
-                    generation_config={"max_new_tokens": 10, "do_sample": False},
-                    images=[image],
-                )
+                # Preprocess image to pixel_values
+                pixel_values = load_image(image, max_num=12).to(torch.bfloat16)
+                if torch.cuda.is_available():
+                    pixel_values = pixel_values.cuda()
+                
+                generation_config = {"max_new_tokens": 10, "do_sample": False}
+                # InternVL chat signature: chat(tokenizer, pixel_values, question, generation_config)
+                response = model.chat(tokenizer, pixel_values, query, generation_config)
             else:
                 inputs = tokenizer(query, return_tensors="pt").to(model.device)
                 with torch.no_grad():
