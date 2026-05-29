@@ -251,13 +251,16 @@ class KDTrainer(Trainer):
         self.vision_hook_features = vision_hook_features  # Mutable dict filled by hooks
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        # Extract custom inputs first
         soft_labels = inputs.pop("soft_labels", None)
         teacher_features = inputs.pop("teacher_features", None)
         
-        # InternVL only accepts specific kwargs - filter out extras
-        # that Trainer/accelerate may inject (e.g. inputs_embeds)
-        valid_keys = {"input_ids", "attention_mask", "labels", "pixel_values",
-                      "image_flags", "pixel_values_videos", "image_sizes"}
+        # Keep labels reference before filtering
+        labels = inputs.get("labels")
+        
+        # InternVL only accepts specific kwargs - filter out everything else
+        # that Trainer/accelerate/peft may inject
+        valid_keys = {"input_ids", "attention_mask", "labels", "pixel_values"}
         filtered_inputs = {k: v for k, v in inputs.items() if k in valid_keys}
         
         outputs = model(**filtered_inputs)
@@ -274,7 +277,6 @@ class KDTrainer(Trainer):
                 for i in range(num_options)
             ]
 
-            labels = inputs.get("labels")
             batch_kd_loss = []
 
             for b in range(logits.shape[0]):
@@ -399,6 +401,13 @@ def setup_student(student_cfg: StudentConfig, kd_cfg: KDConfig):
         bias="none",
     )
     model = get_peft_model(model, lora_config)
+    
+    # Explicitly disable gradient checkpointing (InternVL incompatible with HF's implementation)
+    if hasattr(model, "gradient_checkpointing_disable"):
+        model.gradient_checkpointing_disable()
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
+    
     print(f"\n  [LLM LoRA] targets: {valid_llm_targets}")
 
     # ---- 2. Apply LoRA to Vision Encoder ----
