@@ -518,9 +518,9 @@ def setup_student(student_cfg: SmolVLMStudentConfig, kd_cfg: KDConfig):
     )
     model = get_peft_model(model, lora_config)
 
-    # Explicitly disable gradient checkpointing if incompatible
-    if hasattr(model, "gradient_checkpointing_disable"):
-        model.gradient_checkpointing_disable()
+    # Enable gradient checkpointing to save VRAM (SmolVLM/Idefics3 supports it)
+    if hasattr(model, "gradient_checkpointing_enable"):
+        model.gradient_checkpointing_enable()
     if hasattr(model, "enable_input_require_grads"):
         model.enable_input_require_grads()
 
@@ -723,8 +723,8 @@ def train_student(
         save_steps=kd_cfg.save_steps,
         save_total_limit=kd_cfg.save_total_limit,
         remove_unused_columns=False,
-        gradient_checkpointing=False,
-        dataloader_num_workers=4,
+        gradient_checkpointing=True,
+        dataloader_num_workers=0,
         report_to="none",
     )
 
