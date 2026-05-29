@@ -107,29 +107,58 @@ def build_training_data(
 # Data collator
 # ------------------------------------------------------------------
 
+def _get_num_image_token(model):
+    """Get number of visual tokens per tile for InternVL."""
+    base = model.base_model.model if hasattr(model, 'base_model') else model
+    # Use model attribute if available
+    if hasattr(base, 'num_image_token'):
+        return base.num_image_token
+    config = base.config
+    force_image_size = getattr(config, 'force_image_size', 448)
+    downsample_ratio = getattr(config, 'downsample_ratio', 0.5)
+    if hasattr(config, 'vision_config'):
+        patch_size = getattr(config.vision_config, 'patch_size', 14)
+    else:
+        patch_size = 14
+    return int((force_image_size / patch_size) ** 2 * (downsample_ratio ** 2))
+
+
+def _get_image_size(model):
+    """Get expected image size for InternVL."""
+    base = model.base_model.model if hasattr(model, 'base_model') else model
+    config = base.config
+    return getattr(config, 'force_image_size', 448)
+
+
 class InternVLKDCollator:
     """Collates batches for InternVL with optional soft-label and feature distillation support."""
 
     def __init__(self, tokenizer, processor, max_length: int = 2048, kd_mode: str = "response",
-                 feature_distillation: bool = False, model=None):
+                 feature_distillation: bool = False, model=None, num_image_token: int = 256,
+                 image_size: int = 448):
         self.tokenizer = tokenizer
         self.processor = processor
         self.max_length = max_length
         self.kd_mode = kd_mode
         self.feature_distillation = feature_distillation
         self.model = model
+        self.num_image_token = num_image_token
+        
+        # Build image placeholder token sequence for InternVL
+        # InternVL expects: <img><IMG_CONTEXT>*num_image_token</img>
+        self.image_placeholder = '<img>' + '<IMG_CONTEXT>' * num_image_token + '</img>'
         
         # Get image processor
         if hasattr(processor, "image_processor"):
             self.image_proc = processor.image_processor
         else:
-            # Fallback: create basic CLIP-style image preprocessing
+            # Fallback: InternVL3.5 uses 448x448 with ImageNet normalization
             from torchvision import transforms
             self.image_proc = transforms.Compose([
-                transforms.Resize((336, 336)),
+                transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
-                                   std=[0.26862954, 0.26130258, 0.27577711])
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                   std=[0.229, 0.224, 0.225])
             ])
 
     def _process_image(self, image):
@@ -150,7 +179,7 @@ class InternVLKDCollator:
         teacher_features_list = []
 
         for item in batch:
-            query = f"<image>\n{item['question']}"
+            query = f"{self.image_placeholder}\n{item['question']}"
             response = item["answer"]
 
             # Process image to tensor
@@ -418,6 +447,15 @@ def setup_student(student_cfg: StudentConfig, kd_cfg: KDConfig):
     )
     model = get_peft_model(model, lora_config)
     
+    # Set img_context_token_id on the base model (required for InternVL forward)
+    img_context_token_id = tokenizer.convert_tokens_to_ids('<IMG_CONTEXT>')
+    base_model_ref = model.base_model.model if hasattr(model, 'base_model') else model
+    if img_context_token_id is not None and img_context_token_id != tokenizer.unk_token_id:
+        base_model_ref.img_context_token_id = img_context_token_id
+        print(f"  [Config] img_context_token_id = {img_context_token_id}")
+    else:
+        print("  [Config] WARNING: <IMG_CONTEXT> token not found in tokenizer")
+    
     # Explicitly disable gradient checkpointing (InternVL incompatible with HF's implementation)
     if hasattr(model, "gradient_checkpointing_disable"):
         model.gradient_checkpointing_disable()
@@ -626,6 +664,11 @@ def train_student(
                 
                 print(f"  [Feature KD] projectors created for layers: {list(feature_projectors.keys())}")
 
+    # Compute InternVL-specific params
+    num_image_token = _get_num_image_token(model)
+    image_size = _get_image_size(model)
+    print(f"  [Config] num_image_token = {num_image_token}, image_size = {image_size}")
+
     # Collator
     collator = InternVLKDCollator(
         tokenizer=tokenizer,
@@ -634,6 +677,8 @@ def train_student(
         kd_mode=kd_cfg.kd_mode,
         feature_distillation=kd_cfg.feature_distillation,
         model=model,
+        num_image_token=num_image_token,
+        image_size=image_size,
     )
 
     # Training args
