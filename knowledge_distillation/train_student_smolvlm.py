@@ -190,15 +190,20 @@ class SmolVLMKDCollator:
                 tokenize=False,
             )
 
-            # Process with image
+            # Process with image (no truncation to avoid image token mismatch)
             inputs = self.processor(
                 text=text,
                 images=[image],
                 return_tensors="pt",
                 padding=False,
-                truncation=True,
-                max_length=self.max_length,
+                truncation=False,
             )
+
+            # Manually truncate input_ids/attention_mask AFTER processing
+            # to preserve image token alignment
+            if inputs["input_ids"].shape[-1] > self.max_length:
+                inputs["input_ids"] = inputs["input_ids"][:, :self.max_length]
+                inputs["attention_mask"] = inputs["attention_mask"][:, :self.max_length]
 
             input_ids = inputs["input_ids"].squeeze(0)
             attention_mask = inputs["attention_mask"].squeeze(0)
