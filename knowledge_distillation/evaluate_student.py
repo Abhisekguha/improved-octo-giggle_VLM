@@ -70,7 +70,7 @@ def evaluate(model, tokenizer, dataset):
         sample = dataset[idx]
         image = sample["image"]
         question = sample["question"]
-        options = sample["options"]
+        options = sample.get("choices", sample.get("options", []))
         answer = sample["answer"]
         task = sample.get("task", sample.get("type", "unknown"))
 
