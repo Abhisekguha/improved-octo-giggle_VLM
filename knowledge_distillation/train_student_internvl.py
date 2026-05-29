@@ -28,7 +28,7 @@ from transformers import (
     TrainingArguments,
     Trainer,
 )
-from peft import LoraConfig, get_peft_model, TaskType
+from peft import LoraConfig, get_peft_model
 
 # Support both direct execution and module execution
 try:
@@ -272,8 +272,9 @@ class KDTrainer(Trainer):
         if soft_labels is not None and self.kd_cfg.kd_mode == "soft_label":
             logits = outputs.logits
             num_options = soft_labels.shape[-1]
+            _tokenizer = self.processing_class if hasattr(self, 'processing_class') and self.processing_class else self.tokenizer
             option_ids = [
-                self.tokenizer.encode(chr(65 + i), add_special_tokens=False)[0]
+                _tokenizer.encode(chr(65 + i), add_special_tokens=False)[0]
                 for i in range(num_options)
             ]
 
@@ -397,7 +398,6 @@ def setup_student(student_cfg: StudentConfig, kd_cfg: KDConfig):
         lora_alpha=student_cfg.lora_alpha,
         lora_dropout=student_cfg.lora_dropout,
         target_modules=valid_llm_targets,
-        task_type=TaskType.CAUSAL_LM,
         bias="none",
     )
     model = get_peft_model(model, lora_config)
@@ -644,7 +644,7 @@ def train_student(
         args=training_args,
         train_dataset=training_data,
         data_collator=collator,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         kd_cfg=kd_cfg,
         feature_projectors=feature_projectors,
         vision_hook_features=vision_hook_features,
