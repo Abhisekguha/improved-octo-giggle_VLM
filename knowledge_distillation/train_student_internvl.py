@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Dict, Optional
+from PIL import Image
 
 from datasets import load_dataset
 from transformers import (
@@ -109,12 +110,38 @@ class InternVLKDCollator:
     """Collates batches for InternVL with optional soft-label and feature distillation support."""
 
     def __init__(self, tokenizer, processor, max_length: int = 2048, kd_mode: str = "response",
-                 feature_distillation: bool = False):
+                 feature_distillation: bool = False, model=None):
         self.tokenizer = tokenizer
         self.processor = processor
         self.max_length = max_length
         self.kd_mode = kd_mode
         self.feature_distillation = feature_distillation
+        self.model = model
+        
+        # Get image processor
+        if hasattr(processor, "image_processor"):
+            self.image_proc = processor.image_processor
+        else:
+            # Fallback: create basic CLIP-style image preprocessing
+            from torchvision import transforms
+            self.image_proc = transforms.Compose([
+                transforms.Resize((336, 336)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
+                                   std=[0.26862954, 0.26130258, 0.27577711])
+            ])
+
+    def _process_image(self, image):
+        """Process a single PIL image to tensor."""
+        if hasattr(image, "convert"):
+            image = image.convert("RGB")
+        
+        if hasattr(self.image_proc, "__call__") and hasattr(self.image_proc, "model_input_names"):
+            # HuggingFace image processor
+            return self.image_proc(image, return_tensors="pt").pixel_values.squeeze(0)
+        else:
+            # Torchvision transforms
+            return self.image_proc(image)
 
     def __call__(self, batch):
         input_ids_list, attention_mask_list, labels_list = [], [], []
@@ -125,12 +152,9 @@ class InternVLKDCollator:
             query = f"<image>\n{item['question']}"
             response = item["answer"]
 
-            # Process image
-            if hasattr(self.processor, "image_processor"):
-                pv = self.processor.image_processor(item["image"], return_tensors="pt").pixel_values
-            else:
-                pv = self.processor(images=item["image"], return_tensors="pt").pixel_values
-            pixel_values_list.append(pv)
+            # Process image to tensor
+            pixel_values = self._process_image(item["image"])
+            pixel_values_list.append(pixel_values)
 
             # Tokenize full conversation
             text = (
@@ -176,7 +200,7 @@ class InternVLKDCollator:
             "input_ids": torch.stack(input_ids_list),
             "attention_mask": torch.stack(attention_mask_list),
             "labels": torch.stack(labels_list),
-            "pixel_values": torch.cat(pixel_values_list, dim=0),
+            "pixel_values": torch.stack(pixel_values_list),
         }
         if soft_labels_list:
             result["soft_labels"] = torch.stack(soft_labels_list)
@@ -410,9 +434,22 @@ def setup_student(student_cfg: StudentConfig, kd_cfg: KDConfig):
 
     # Processor for images
     try:
+        from transformers import CLIPImageProcessor
         processor = AutoProcessor.from_pretrained(student_cfg.model_path, trust_remote_code=True)
-    except Exception:
+    except Exception as e:
+        print(f"  Warning: Could not load AutoProcessor ({e}), using tokenizer")
         processor = tokenizer
+        # Try to load image processor separately for InternVL
+        try:
+            from transformers import CLIPImageProcessor
+            vision_config = model.config.vision_config if hasattr(model.config, "vision_config") else None
+            if vision_config:
+                processor.image_processor = CLIPImageProcessor.from_pretrained(
+                    "openai/clip-vit-large-patch14-336"
+                )
+                print(f"  Loaded CLIP image processor as fallback")
+        except Exception:
+            pass
 
     return model, tokenizer, processor
 
@@ -557,6 +594,7 @@ def train_student(
         max_length=kd_cfg.max_length,
         kd_mode=kd_cfg.kd_mode,
         feature_distillation=kd_cfg.feature_distillation,
+        model=model,
     )
 
     # Training args with different LR for vision
