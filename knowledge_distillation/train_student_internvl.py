@@ -196,11 +196,15 @@ class InternVLKDCollator:
             elif self.feature_distillation:
                 teacher_features_list.append(None)
 
+        pixel_values = torch.stack(pixel_values_list)
+        # image_flags: 1 for each real image patch, shape (batch_size, 1)
+        image_flags = torch.ones(pixel_values.shape[0], 1, dtype=torch.long)
         result = {
             "input_ids": torch.stack(input_ids_list),
             "attention_mask": torch.stack(attention_mask_list),
             "labels": torch.stack(labels_list),
-            "pixel_values": torch.stack(pixel_values_list),
+            "pixel_values": pixel_values,
+            "image_flags": image_flags,
         }
         if soft_labels_list and self.kd_mode == "soft_label":
             # Pad soft labels to same size (some questions have 4 options, some 5)
@@ -260,7 +264,7 @@ class KDTrainer(Trainer):
         
         # InternVL only accepts specific kwargs - filter out everything else
         # that Trainer/accelerate/peft may inject
-        valid_keys = {"input_ids", "attention_mask", "labels", "pixel_values"}
+        valid_keys = {"input_ids", "attention_mask", "labels", "pixel_values", "image_flags"}
         filtered_inputs = {k: v for k, v in inputs.items() if k in valid_keys}
         
         outputs = model(**filtered_inputs)
