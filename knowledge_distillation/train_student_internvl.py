@@ -191,9 +191,10 @@ class InternVLKDCollator:
                 f"<|im_start|>user\n{query}<|im_end|>\n"
                 f"<|im_start|>assistant\n{response}<|im_end|>"
             )
+            # Tokenize without padding first (we'll pad to batch max later)
             enc = self.tokenizer(
                 text, max_length=self.max_length, truncation=True,
-                padding="max_length", return_tensors="pt",
+                add_special_tokens=False, return_tensors="pt",
             )
 
             input_ids = enc["input_ids"].squeeze(0)
@@ -226,13 +227,27 @@ class InternVLKDCollator:
             elif self.feature_distillation:
                 teacher_features_list.append(None)
 
+        # Pad sequences to the longest in this batch (dynamic padding saves memory)
+        max_seq_len = max(ids.shape[0] for ids in input_ids_list)
+        pad_token_id = self.tokenizer.pad_token_id or 0
+        padded_input_ids, padded_attention_mask, padded_labels = [], [], []
+        for ids, mask, lbl in zip(input_ids_list, attention_mask_list, labels_list):
+            pad_len = max_seq_len - ids.shape[0]
+            if pad_len > 0:
+                ids = F.pad(ids, (0, pad_len), value=pad_token_id)
+                mask = F.pad(mask, (0, pad_len), value=0)
+                lbl = F.pad(lbl, (0, pad_len), value=-100)
+            padded_input_ids.append(ids)
+            padded_attention_mask.append(mask)
+            padded_labels.append(lbl)
+
         pixel_values = torch.stack(pixel_values_list)
         # image_flags: 1 for each real image patch, shape (batch_size, 1)
         image_flags = torch.ones(pixel_values.shape[0], 1, dtype=torch.long)
         result = {
-            "input_ids": torch.stack(input_ids_list),
-            "attention_mask": torch.stack(attention_mask_list),
-            "labels": torch.stack(labels_list),
+            "input_ids": torch.stack(padded_input_ids),
+            "attention_mask": torch.stack(padded_attention_mask),
+            "labels": torch.stack(padded_labels),
             "pixel_values": pixel_values,
             "image_flags": image_flags,
         }
