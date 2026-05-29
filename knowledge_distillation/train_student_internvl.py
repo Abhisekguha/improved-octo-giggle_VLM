@@ -537,6 +537,17 @@ def train_student(
                         teacher_dim, student_dim, kd_cfg.feature_projector_dim
                     )
                 feature_projectors = feature_projectors.to(model.device)
+                
+                # Register as buffers in the model so they're part of the training
+                if hasattr(model, "feature_projectors"):
+                    model.feature_projectors = feature_projectors
+                else:
+                    # Add as attribute to base model
+                    if hasattr(model, "base_model"):
+                        model.base_model.feature_projectors = feature_projectors
+                    else:
+                        model.feature_projectors = feature_projectors
+                
                 print(f"  [Feature KD] projectors created for layers: {list(feature_projectors.keys())}")
 
     # Collator
@@ -578,10 +589,6 @@ def train_student(
         vision_hook_features=vision_hook_features,
     )
 
-    # Add feature projector params to optimizer if present
-    if feature_projectors:
-        trainer.add_callback(_FeatureProjectorCallback(feature_projectors))
-
     # Train
     print("\nStarting training...")
     trainer.train()
@@ -598,21 +605,6 @@ def train_student(
     print(f"\nStudent model saved to: {final_path}")
 
     return model, tokenizer
-
-
-class _FeatureProjectorCallback:
-    """Ensures feature projector parameters are included in training."""
-
-    def __init__(self, projectors: nn.ModuleDict):
-        self.projectors = projectors
-
-    def on_train_begin(self, args, state, control, model=None, **kwargs):
-        # Add projector params to optimizer
-        if hasattr(kwargs.get("optimizer", None), "param_groups"):
-            kwargs["optimizer"].add_param_group({
-                "params": list(self.projectors.parameters()),
-                "lr": args.learning_rate,
-            })
 
 
 # ------------------------------------------------------------------
