@@ -253,7 +253,14 @@ class KDTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         soft_labels = inputs.pop("soft_labels", None)
         teacher_features = inputs.pop("teacher_features", None)
-        outputs = model(**inputs)
+        
+        # InternVL only accepts specific kwargs - filter out extras
+        # that Trainer/accelerate may inject (e.g. inputs_embeds)
+        valid_keys = {"input_ids", "attention_mask", "labels", "pixel_values",
+                      "image_flags", "pixel_values_videos", "image_sizes"}
+        filtered_inputs = {k: v for k, v in inputs.items() if k in valid_keys}
+        
+        outputs = model(**filtered_inputs)
         ce_loss = outputs.loss
 
         total_loss = ce_loss
@@ -604,7 +611,7 @@ def train_student(
         model=model,
     )
 
-    # Training args with different LR for vision
+    # Training args
     training_args = TrainingArguments(
         output_dir=paths_cfg.student_checkpoints,
         num_train_epochs=kd_cfg.num_epochs,
@@ -617,7 +624,7 @@ def train_student(
         save_steps=kd_cfg.save_steps,
         save_total_limit=kd_cfg.save_total_limit,
         remove_unused_columns=False,
-        gradient_checkpointing=True,
+        gradient_checkpointing=False,  # InternVL doesn't support HF-style grad checkpointing
         dataloader_num_workers=4,
         report_to="none",
     )
