@@ -267,6 +267,12 @@ class KDTrainer(Trainer):
         valid_keys = {"input_ids", "attention_mask", "labels", "pixel_values", "image_flags"}
         filtered_inputs = {k: v for k, v in inputs.items() if k in valid_keys}
         
+        # Ensure image_flags is on same device as pixel_values (multi-GPU safety)
+        if "image_flags" in filtered_inputs and "pixel_values" in filtered_inputs:
+            filtered_inputs["image_flags"] = filtered_inputs["image_flags"].to(
+                filtered_inputs["pixel_values"].device
+            )
+        
         outputs = model(**filtered_inputs)
         ce_loss = outputs.loss
 
@@ -382,7 +388,7 @@ def setup_student(student_cfg: StudentConfig, kd_cfg: KDConfig):
         student_cfg.model_path,
         torch_dtype=torch.bfloat16 if kd_cfg.bf16 else torch.float16,
         trust_remote_code=True,
-        device_map="auto",
+        device_map={"":0},
     )
     tokenizer = AutoTokenizer.from_pretrained(
         student_cfg.model_path, trust_remote_code=True
