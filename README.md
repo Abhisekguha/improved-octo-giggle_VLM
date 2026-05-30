@@ -1507,7 +1507,7 @@ graph TB
     subgraph "Phase 3: Knowledge Distillation"
         G --> H[Step 1: Generate Teacher Labels<br/>Qwen → Rationales + Soft Labels + Features]
         H --> I[Step 2: Train Student<br/>InternVL learns from teacher outputs]
-        I --> J[Step 3: Evaluate KD Student<br/>Target: 68-75% | Achieved: 75.3% ✅]
+        I --> J[Step 3: Evaluate KD Student<br/>Target: 68-75%, Achieved: 75.3% ✅]
         J --> K{Performance<br/>Acceptable?}
         K -->|No| L[Ablation Study:<br/>- Tune KD hyperparams<br/>- Try soft-label mode<br/>- Adjust feature layers]
         L --> I
